@@ -23,6 +23,8 @@
 
 #include <cstdint>
 
+#include <vector>
+
 // The below define is just for my (degski) private purposes, it directs auto-
 // linking (to the correct lib), both for vc and clang. It has no effect,
 // otherwise.
@@ -38,7 +40,7 @@
 
 #ifdef _WIN32
 #    pragma comment( lib, "Shlwapi.lib" )
-#    if defined( _DEBUG )
+#    ifndef NDEBUG
 #        pragma comment( lib, "benchmark_maind.lib" )
 #        pragma comment( lib, "benchmarkd.lib" )
 #    else
@@ -52,22 +54,24 @@
 
 template<typename ValueType>
 static void custom_arguments ( benchmark::internal::Benchmark * b ) {
-    long long const bs = 4ll, es = 1ll << 22;
-    for ( long long i = bs; i <= es; i <<= 4 )
+    long long const bs = 2ll, es = 1ll << 27;
+    for ( long long i = bs; i <= es; i <<= 2 )
         b->Args ( { i, es } );
 }
 
 template<class Container>
-void bm_emplace_back_random ( benchmark::State & state ) noexcept {
+void bm_emplace_back_random1 ( benchmark::State & state ) noexcept {
     using value_type = typename Container::value_type;
     using size_type  = typename Container::size_type;
-    sax::jsf64 gen;
+    static sax::jsf64 gen ( 123ull );
     for ( auto _ : state ) {
         state.PauseTiming ( );
         size_type const is =
             sax::uniform_int_distribution<size_type> ( size_type{ 0 }, static_cast<size_type> ( state.range ( 0u ) - 1 ) ) ( gen );
+        state.ResumeTiming ( );
         Container data ( static_cast<size_type> ( is ) );
         benchmark::DoNotOptimize ( data.data ( ) );
+        state.PauseTiming ( );
         size_type i =
             sax::uniform_int_distribution<size_type> ( size_type{ 1 }, static_cast<size_type> ( state.range ( 0u ) - is ) ) ( gen );
         state.ResumeTiming ( );
@@ -77,13 +81,74 @@ void bm_emplace_back_random ( benchmark::State & state ) noexcept {
     }
 }
 
-using value_type = std::uint64_t;
+template<class Container>
+void bm_emplace_back_random2 ( benchmark::State & state ) noexcept {
+    using value_type = typename Container::value_type;
+    using size_type  = typename Container::size_type;
+    static sax::jsf64 gen ( 123ull );
+    for ( auto _ : state ) {
+        state.PauseTiming ( );
+        size_type const is =
+            sax::uniform_int_distribution<size_type> ( size_type{ 0 }, static_cast<size_type> ( state.range ( 0u ) - 1 ) ) ( gen );
+        state.ResumeTiming ( );
+        Container data ( static_cast<size_type> ( is ) );
+        benchmark::DoNotOptimize ( data.data ( ) );
+        state.PauseTiming ( );
+        size_type i =
+            sax::uniform_int_distribution<size_type> ( size_type{ 1 }, static_cast<size_type> ( state.range ( 0u ) - is ) ) ( gen );
+        state.ResumeTiming ( );
+        while ( i-- )
+            data.emplace_back ( static_cast<value_type> ( i ) );
+        benchmark::ClobberMemory ( );
+    }
+}
 
-BENCHMARK_TEMPLATE ( bm_emplace_back_random, std::vector<value_type> )
+template<class Container>
+void bm_emplace_back_random3 ( benchmark::State & state ) noexcept {
+    using value_type = typename Container::value_type;
+    using size_type  = typename Container::size_type;
+    static sax::jsf64 gen ( 123ull );
+    for ( auto _ : state ) {
+        state.PauseTiming ( );
+        size_type const is =
+            sax::uniform_int_distribution<size_type> ( size_type{ 0 }, static_cast<size_type> ( state.range ( 0u ) - 1 ) ) ( gen );
+        state.ResumeTiming ( );
+        Container data ( static_cast<size_type> ( is ) );
+        benchmark::DoNotOptimize ( data.data ( ) );
+        state.PauseTiming ( );
+        size_type i =
+            sax::uniform_int_distribution<size_type> ( size_type{ 1 }, static_cast<size_type> ( state.range ( 0u ) - is ) ) ( gen );
+        state.ResumeTiming ( );
+        while ( i-- )
+            data.emplace_back ( static_cast<value_type> ( i ) );
+        benchmark::ClobberMemory ( );
+    }
+}
+
+#include <pector/malloc_allocator.h>
+#include <pector/mimalloc_allocator.h>
+#include <pector/pector.h>
+
+template<typename T, typename S>
+using alpector = pt::pector<T, std::allocator<T>, S, pt::default_recommended_size, false>;
+template<typename T, typename S>
+using mapector = pt::pector<T, pt::malloc_allocator<T, true, false>, S, pt::default_recommended_size, false>;
+template<typename T, typename S>
+using mipector = pt::pector<T, pt::mimalloc_allocator<T, true, false>, S, pt::default_recommended_size, false>;
+
+constexpr int repeats = 8;
+using value_type      = std::uint32_t;
+using size_type       = std::uint64_t;
+
+BENCHMARK_TEMPLATE ( bm_emplace_back_random1, std::vector<value_type> )
     ->Apply ( custom_arguments<value_type> )
-    ->Repetitions ( 4 )
+    ->Repetitions ( repeats )
     ->ReportAggregatesOnly ( true );
-BENCHMARK_TEMPLATE ( bm_emplace_back_random, std::vector<value_type, sax::mi_allocator<value_type>> )
+BENCHMARK_TEMPLATE ( bm_emplace_back_random2, std::vector<value_type, sax::mi_allocator<value_type>> )
     ->Apply ( custom_arguments<value_type> )
-    ->Repetitions ( 4 )
+    ->Repetitions ( repeats )
+    ->ReportAggregatesOnly ( true );
+BENCHMARK_TEMPLATE ( bm_emplace_back_random3, mipector<value_type, size_type> )
+    ->Apply ( custom_arguments<value_type> )
+    ->Repetitions ( repeats )
     ->ReportAggregatesOnly ( true );
