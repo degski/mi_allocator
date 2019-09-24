@@ -31,12 +31,12 @@
 #include <new>
 #include <type_traits>
 
-#include <mimalloc.h>
+#include <ksmalloc.h>
 
 namespace sax {
 
 template<class T>
-class mi_allocator {
+class ks_allocator {
     public:
     using value_type                             = T;
     using difference_type                        = typename std::pointer_traits<value_type *>::difference_type;
@@ -44,10 +44,10 @@ class mi_allocator {
     using propagate_on_container_move_assignment = std::true_type;
     using is_always_equal                        = std::true_type;
 
-    mi_allocator ( ) noexcept                      = default;
-    mi_allocator ( mi_allocator const & ) noexcept = default;
+    ks_allocator ( ) noexcept                      = default;
+    ks_allocator ( ks_allocator const & ) noexcept = default;
     template<class U>
-    mi_allocator ( mi_allocator<U> const & ) noexcept {};
+    ks_allocator ( ks_allocator<U> const & ) noexcept {};
 
     [[nodiscard]] value_type * allocate ( std::size_t n_ ) {
         if constexpr ( alignof ( value_type ) <= sizeof ( void * ) ) {
@@ -78,7 +78,7 @@ class mi_allocator {
     // Unaligned.
 
     [[nodiscard]] void * operator new ( std::size_t n_size_ ) {
-        auto ptr = mi_malloc ( n_size_ );
+        auto ptr = KanameShiki::Alloc ( n_size_ );
         assert ( pointer_alignment ( ptr ) >= alignof ( value_type ) );
         if ( ptr )
             return ptr;
@@ -86,31 +86,29 @@ class mi_allocator {
             throw std::bad_alloc{};
     }
 
-    void operator delete ( void * ptr_ ) noexcept { mi_free ( ptr_ ); }
+    void operator delete ( void * ptr_ ) noexcept { KanameShiki::Free ( ptr_ ); }
 
     // Aligned.
 
     [[nodiscard]] void * operator new ( std::size_t n_size_, std::align_val_t align_ ) {
-        auto ptr = mi_malloc_aligned ( n_size_, static_cast<std::size_t> ( align_ ) );
+        auto ptr = KanameShiki::Align ( static_cast<std::size_t> ( align_ ), n_size_ );
         if ( ptr )
             return ptr;
         else
             throw std::bad_alloc{};
     }
 
-    void operator delete ( void * ptr_, std::align_val_t align_ ) noexcept {
-        mi_free_aligned ( ptr_, static_cast<std::size_t> ( align_ ) );
-    }
+    void operator delete ( void * ptr_, std::align_val_t align_ ) noexcept { KanameShiki::Free ( ptr_ ); }
 };
 
 } // namespace sax
 
 template<class T, class U>
-[[nodiscard]] bool operator== ( sax::mi_allocator<T> const &, sax::mi_allocator<U> const & ) noexcept {
+[[nodiscard]] bool operator== ( sax::ks_allocator<T> const &, sax::ks_allocator<U> const & ) noexcept {
     return true;
 }
 
 template<class T, class U>
-[[nodiscard]] bool operator!= ( sax::mi_allocator<T> const &, sax::mi_allocator<U> const & ) noexcept {
+[[nodiscard]] bool operator!= ( sax::ks_allocator<T> const &, sax::ks_allocator<U> const & ) noexcept {
     return false;
 }

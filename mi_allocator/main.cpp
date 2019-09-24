@@ -32,9 +32,14 @@
 #    if not defined( USE_MIMALLOC_LTO )
 #        define USE_MIMALLOC_LTO 1
 #    endif
+#    if not defined( USE_KSMALLOC_LTO )
+#        define USE_KSMALLOC_LTO 1
+#    endif
 #endif
 
 #include <mi_allocator.hpp>
+
+#include <ks_allocator.hpp>
 
 #include <benchmark/benchmark.h>
 
@@ -125,6 +130,28 @@ void bm_emplace_back_random3 ( benchmark::State & state ) noexcept {
     }
 }
 
+template<class Container>
+void bm_emplace_back_random4 ( benchmark::State & state ) noexcept {
+    using value_type = typename Container::value_type;
+    using size_type  = typename Container::size_type;
+    static sax::jsf64 gen ( 123ull );
+    for ( auto _ : state ) {
+        state.PauseTiming ( );
+        size_type const is =
+            sax::uniform_int_distribution<size_type> ( size_type{ 0 }, static_cast<size_type> ( state.range ( 0u ) - 1 ) ) ( gen );
+        state.ResumeTiming ( );
+        Container data ( static_cast<size_type> ( is ) );
+        benchmark::DoNotOptimize ( data.data ( ) );
+        state.PauseTiming ( );
+        size_type i =
+            sax::uniform_int_distribution<size_type> ( size_type{ 1 }, static_cast<size_type> ( state.range ( 0u ) - is ) ) ( gen );
+        state.ResumeTiming ( );
+        while ( i-- )
+            data.emplace_back ( static_cast<value_type> ( i ) );
+        benchmark::ClobberMemory ( );
+    }
+}
+
 #include <pector/malloc_allocator.h>
 #include <pector/mimalloc_allocator.h>
 #include <pector/pector.h>
@@ -148,7 +175,11 @@ BENCHMARK_TEMPLATE ( bm_emplace_back_random2, std::vector<value_type, sax::mi_al
     ->Apply ( custom_arguments<value_type> )
     ->Repetitions ( repeats )
     ->ReportAggregatesOnly ( true );
-BENCHMARK_TEMPLATE ( bm_emplace_back_random3, mipector<value_type, size_type> )
+BENCHMARK_TEMPLATE ( bm_emplace_back_random3, std::vector<value_type, sax::ks_allocator<value_type>> )
+    ->Apply ( custom_arguments<value_type> )
+    ->Repetitions ( repeats )
+    ->ReportAggregatesOnly ( true );
+BENCHMARK_TEMPLATE ( bm_emplace_back_random4, mipector<value_type, size_type> )
     ->Apply ( custom_arguments<value_type> )
     ->Repetitions ( repeats )
     ->ReportAggregatesOnly ( true );
